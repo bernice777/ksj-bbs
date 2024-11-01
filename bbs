@@ -1,0 +1,191 @@
+#!/bin/bash
+
+# 도구가 설치될 디렉토리 설정
+TOOLS_DIR="$HOME/tools"
+
+# 필요한 패키지 업데이트 및 설치
+echo "[*] Updating package list and installing prerequisites..."
+sudo apt update
+sudo apt install -y python3 python3-pip git curl
+
+# Go 설치 확인
+if ! command -v go &> /dev/null; then
+    echo "[*] Installing Go..."
+    sudo apt install -y golang-go
+fi
+
+# 도구 디렉토리 생성
+mkdir -p $TOOLS_DIR
+
+# Sublist3r 설치
+if [ ! -d "$TOOLS_DIR/Sublist3r" ]; then
+    echo "[*] Installing Sublist3r..."
+    git clone https://github.com/aboul3la/Sublist3r.git $TOOLS_DIR/Sublist3r
+    pip3 install -r $TOOLS_DIR/Sublist3r/requirements.txt
+else
+    echo "[*] Sublist3r already installed."
+fi
+
+# Dirsearch 설치
+if [ ! -d "$TOOLS_DIR/dirsearch" ]; then
+    echo "[*] Installing Dirsearch..."
+    git clone https://github.com/maurosoria/dirsearch.git $TOOLS_DIR/dirsearch
+else
+    echo "[*] Dirsearch already installed."
+fi
+
+# Virtual-host-discovery 설치
+if [ ! -d "$TOOLS_DIR/virtual-host-discovery" ]; then
+    echo "[*] Installing Virtual-host-discovery..."
+    git clone https://github.com/jobertabma/virtual-host-discovery.git $TOOLS_DIR/virtual-host-discovery
+else
+    echo "[*] Virtual-host-discovery already installed."
+fi
+
+# Knockpy 설치
+if [ ! -d "$TOOLS_DIR/knockpy" ]; then
+    echo "[*] Installing Knockpy..."
+    git clone https://github.com/guelfoweb/knock.git $TOOLS_DIR/knockpy
+    pip3 install -r $TOOLS_DIR/knockpy/requirements.txt
+else
+    echo "[*] Knockpy already installed."
+fi
+
+# SecLists 설치
+if [ ! -d "$TOOLS_DIR/SecLists" ]; then
+    echo "[*] Installing SecLists..."
+    git clone https://github.com/danielmiessler/SecLists.git $TOOLS_DIR/SecLists
+else
+    echo "[*] SecLists already installed."
+fi
+
+# Httprobe 설치
+if ! command -v httprobe &> /dev/null; then
+    echo "[*] Installing Httprobe..."
+    go install github.com/tomnomnom/httprobe@latest
+else
+    echo "[*] Httprobe already installed."
+fi
+
+# Waybackurls 설치
+if ! command -v waybackurls &> /dev/null; then
+    echo "[*] Installing Waybackurls..."
+    go install github.com/tomnomnom/waybackurls@latest
+else
+    echo "[*] Waybackurls already installed."
+fi
+
+# JSParser 설치
+if [ ! -d "$TOOLS_DIR/JSParser" ]; then
+    echo "[*] Installing JSParser..."
+    git clone https://github.com/nahamsec/JSParser.git $TOOLS_DIR/JSParser
+    pip3 install -r $TOOLS_DIR/JSParser/requirements.txt
+else
+    echo "[*] JSParser already installed."
+fi
+
+# Domains-from-csp 설치
+if [ ! -d "$TOOLS_DIR/domains-from-csp" ]; then
+    echo "[*] Installing domains-from-csp..."
+    git clone https://github.com/nahamsec/domains-from-csp.git $TOOLS_DIR/domains-from-csp
+    pip3 install -r $TOOLS_DIR/domains-from-csp/requirements.txt
+else
+    echo "[*] domains-from-csp already installed."
+fi
+
+# LinkFinder 설치
+if [ ! -d "$TOOLS_DIR/LinkFinder" ]; then
+    echo "[*] Installing LinkFinder..."
+    git clone https://github.com/GerbenJavado/LinkFinder.git $TOOLS_DIR/LinkFinder
+    pip3 install -r $TOOLS_DIR/LinkFinder/requirements.txt
+else
+    echo "[*] LinkFinder already installed."
+fi
+
+# Unfurl 설치
+if ! command -v unfurl &> /dev/null; then
+    echo "[*] Installing Unfurl..."
+    go install github.com/tomnomnom/unfurl@latest
+else
+    echo "[*] Unfurl already installed."
+fi
+
+# Webscreenshot 설치
+if [ ! -d "$TOOLS_DIR/webscreenshot" ]; then
+    echo "[*] Installing Webscreenshot..."
+    git clone https://github.com/maaaaz/webscreenshot.git $TOOLS_DIR/webscreenshot
+    pip3 install -r $TOOLS_DIR/webscreenshot/requirements.txt
+else
+    echo "[*] Webscreenshot already installed."
+fi
+
+echo "[*] Installation completed! All tools are installed in $TOOLS_DIR."
+
+# PATH 설정 안내
+echo "Don't forget to add Go binaries to your PATH by adding the following to your ~/.bashrc or ~/.zshrc:"
+echo 'export PATH=$PATH:$HOME/go/bin'
+
+
+# 도메인 입력 받기
+read -p "Enter the domain to scan: " DOMAIN
+
+# 입력값이 없으면 종료
+if [ -z "$DOMAIN" ]; then
+    echo "No domain entered. Exiting..."
+    exit 1
+fi
+
+# 결과 저장 경로 설정
+OUTPUT_DIR="./bugbounty_results"
+REPORT_FILE="$OUTPUT_DIR/bugbounty_report.txt"
+SUBLIST3R_FILE="$OUTPUT_DIR/subdomains.txt"
+DIRSEARCH_FILE="$OUTPUT_DIR/dirsearch_results.txt"
+HTTPROBE_FILE="$OUTPUT_DIR/alive_domains.txt"
+WAYBACKURLS_FILE="$OUTPUT_DIR/waybackurls.txt"
+
+# 결과 저장 디렉터리 생성
+mkdir -p $OUTPUT_DIR
+
+# Sublist3r 실행
+echo "[*] Running Sublist3r..."
+sublist3r -d $DOMAIN -o $SUBLIST3R_FILE
+
+# Httprobe 실행 (Sublist3r 결과로 살아있는 도메인 확인)
+echo "[*] Running Httprobe..."
+cat $SUBLIST3R_FILE | httprobe > $HTTPROBE_FILE
+
+# Dirsearch 실행 (살아있는 도메인에 대해 디렉터리 검색)
+echo "[*] Running Dirsearch on alive domains..."
+while read domain; do
+    echo "[*] Scanning $domain with Dirsearch..."
+    dirsearch -u $domain -e * >> $DIRSEARCH_FILE
+done < $HTTPROBE_FILE
+
+# Waybackurls 실행 (과거 URL 추출)
+echo "[*] Running Waybackurls..."
+echo $DOMAIN | waybackurls > $WAYBACKURLS_FILE
+
+# 보고서 파일 작성
+echo "[*] Compiling report..."
+{
+    echo "Bug Bounty Report for $DOMAIN"
+    echo "=============================="
+    echo ""
+    echo "1. Subdomains (Found using Sublist3r):"
+    echo "-------------------------------------"
+    cat $SUBLIST3R_FILE
+    echo ""
+    echo "2. Alive Domains (Filtered using Httprobe):"
+    echo "------------------------------------------"
+    cat $HTTPROBE_FILE
+    echo ""
+    echo "3. Directory Scanning Results (Using Dirsearch):"
+    echo "----------------------------------------------"
+    cat $DIRSEARCH_FILE
+    echo ""
+    echo "4. Past URLs (Extracted using Waybackurls):"
+    echo "------------------------------------------"
+    cat $WAYBACKURLS_FILE
+} > $REPORT_FILE
+
+echo "[*] Report saved to $REPORT_FILE"
